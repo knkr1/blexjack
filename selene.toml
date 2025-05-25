@@ -1,2 +1,2 @@
 std = "roblox"
-exclude = ["Packages","ServerPackages"]
+exclude = ["Packages/**","ServerPackages/**","Packages/Holder/*]
