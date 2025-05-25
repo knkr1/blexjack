@@ -10,6 +10,12 @@ local net = require(ReplicatedStorage.Packages.net)
 local CardGenerator = require(script.Parent.CardGenerator)
 local actionWatch = net:RemoteEvent("action")
 local setVisiblity = net:RemoteEvent("SetVisibility")
+local setProximity = net:RemoteEvent("setProximity")
+local leaveRequest = net:RemoteEvent("leaveRequest")
+local clientStatus = net:RemoteEvent("clientStatus")
+
+local waitingTime = 10
+
 local BlackjackGame = {}
 
 BlackjackGame.__index = BlackjackGame
@@ -28,6 +34,11 @@ type blackjackTable = Part & {
 		Player3: Attachment,
 		Player4: Attachment,
 		tableJoin: ProximityPrompt,
+		Info: BillboardGui & {
+			MainFrame: Frame & {
+				Status: TextBox,
+			},
+		},
 	},
 	player1: Part & {
 		Front: Attachment,
@@ -95,12 +106,42 @@ function BlackjackGame:Init()
 		end
 	end)
 
+	--Remove User
+	leaveRequest.OnServerEvent:Connect(function(plr)
+		self:RemovePlayer(plr)
+		self:DeattachPlayer(plr)
+	end)
+
 	task.spawn(function()
 		while task.wait() do
 			if #self.players > 0 then
 				self.canStart = true
 			else
 				self.canStart = false
+			end
+		end
+	end)
+	task.spawn(function()
+		while task.wait() do
+			--Go for a loop until canStart (enough players)
+			while self.canStart == false do
+				self:SetStatus("Waiting For Players")
+
+				task.wait()
+			end
+			--Intermissions, break if can't start
+			for i = waitingTime, 0, -1 do
+				if self.canStart == false then
+					break
+				end
+				self:SetStatus(i)
+				self:SetClientStatus("Game starting in " .. i)
+				task.wait(1)
+			end
+
+			--Game start, only if can start, else go back to the beginning
+			if self.canStart then
+				print("wooho game")
 			end
 		end
 	end)
@@ -124,11 +165,19 @@ function BlackjackGame:AddPlayer(plr: Player): boolean
 		{},
 		GameEnum.blackjackActions.none,
 		0,
-		actionWatch.OnServerEvent:Connect(function(request, data)
-			if GameEnum.blackjackActions[request] then
-				self:FindPlayerInTable(plr)[4] = request
-			elseif request == GameEnum.blackjackRequestActions.bet then
-				--TODO: check requested amount, check user's server amount
+		actionWatch.OnServerEvent:Connect(function(reqPLR, request, data)
+			if reqPLR == plr then
+				if GameEnum.blackjackActions[request] then
+					local _, plrIndex = self:FindPlayerInTable(self.players)
+
+					--Only write the action if it's player's turn
+					if self.indexTurn == plrIndex then
+						self:FindPlayerInTable(plr)[4] = request
+						print("logged: " .. request)
+					end
+				elseif request == GameEnum.blackjackRequestActions.bet then
+					--TODO: check requested amount, check user's server amount
+				end
 			end
 		end),
 	})
@@ -162,6 +211,7 @@ function BlackjackGame:AttachPlayer(plr: Player)
 	end
 
 	setVisiblity:FireClient(plr, true)
+	setProximity:FireClient(plr, false)
 end
 
 function BlackjackGame:DeattachPlayer(plr: Player)
@@ -189,11 +239,6 @@ function BlackjackGame:RemovePlayer(plr: Player): boolean
 	--TODO: Add a bug tracker to see how often it exists.
 	warn("BlackjackGame -- Tried to remove a player that doesn't exists.")
 	return false
-end
-
-function BlackjackGame:SetPlayerMove(bool: boolean)
-	if bool then
-	end
 end
 
 --If there's a dealer (1 Player)
@@ -290,6 +335,18 @@ end
 function BlackjackGame:ShowCard(card: Card): ()
 	card.FrontTexture.Transparency = 0
 	card.CFrame = card.CFrame * CFrame.Angles(0, 0, math.rad(-90))
+end
+
+function BlackjackGame:SetStatus(text)
+	--Redefining due intellisense issues
+	local bjTable: blackjackTable = self.blackjackTable
+	bjTable.Table.Info.MainFrame.Status.Text = text
+end
+
+function BlackjackGame:SetClientStatus(text)
+	for i, v in pairs(self.players) do
+		clientStatus:FireClient(v[1], text)
+	end
 end
 
 --Game between players, atleast 2 players.
