@@ -1,8 +1,9 @@
 local ServerScriptService = game:GetService("ServerScriptService")
 local BlackjackGame = require(ServerScriptService.Classes.BlackjackGame)
-local tbl = game.Workspace.BlackjackGame
 
-print("doing")
-local bj = BlackjackGame.new(tbl)
-bj:Init()
-print("made")
+for i, v in pairs(game.Workspace:GetDescendants()) do
+	if v.Name == "BlackjackGame" then
+		local bj = BlackjackGame.new(v)
+		bj:Init()
+	end
+end

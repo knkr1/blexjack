@@ -80,7 +80,9 @@ end
 
 function CardGenerator.GetCardByName(name: string): Part | boolean
 	if ReplicatedStorage.Assets.Cards[name] then
-		return ReplicatedStorage.Assets.Cards[name]:Clone()
+		local cardClone = ReplicatedStorage.Assets.Cards[name]:Clone()
+
+		return cardClone
 	end
 	return false
 end

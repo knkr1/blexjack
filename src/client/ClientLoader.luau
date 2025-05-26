@@ -80,10 +80,14 @@ end
 
 function LoadingController:LoadHandlers()
 	for i, v in pairs(script.Parent.Handlers:GetDescendants()) do
-		pcall(function()
+		local _, r = pcall(function()
 			require(v):Init()
 		end)
+		if r then
+			warn(r)
+		end
 	end
+	print("LoadingController LoadHandlers done")
 end
 
 return LoadingController
