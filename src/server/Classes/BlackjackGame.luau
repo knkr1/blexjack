@@ -42,23 +42,25 @@ type blackjackTable = Part & {
 			},
 		},
 	},
-	player1: Part & {
+	player1: Seat & {
 		Front: Attachment,
 	},
-	player2: Part & {
+	player2: Seat & {
 		Front: Attachment,
 	},
-	player3: Part & {
+	player3: Seat & {
 		Front: Attachment,
 	},
-	player4: Part & {
+	player4: Seat & {
 		Front: Attachment,
 	},
+
 	Border: Folder & {
 		border: UnionOperation & {
 			Front: Attachment,
 		},
 	},
+	Settings: ModuleScript,
 }
 type self = {
 	players: {
@@ -72,6 +74,10 @@ type self = {
 	indexTurn: number,
 	canStart: boolean,
 	processedPlayers: number,
+	Settings: {
+		minBet: number,
+		maxBet: number,
+	},
 }
 
 export type BlackjackGame = typeof(setmetatable({} :: self, BlackjackGame))
@@ -106,6 +112,10 @@ function BlackjackGame.new(blackjackTable: blackjackTable, isDealer: boolean?): 
 	self.processedPlayers = 0
 	--Can player send action requests?
 	self.canAction = false
+	--Is it an insurance game? (Dealer has an A)
+	self.isInsurance = false
+	--Settings from the ModuleScript inside of the blackjack table model (They generally include limits)
+	self.Settings = require(blackjackTable.Settings)
 
 	return setmetatable(self, BlackjackGame)
 end
@@ -194,7 +204,7 @@ function BlackjackGame:AddPlayer(plr: Player): boolean
 		return false
 	end
 
-	--player object(1), card in hand(2), action(3), bet(4), watch(5), player index (6), animObject (7)
+	--player object(1), card in hand(2), action(3), bet(4), watch(5), player index (6), animObject (7), playerInsurance(8)
 	table.insert(self.players, {
 		plr,
 		{},
@@ -218,6 +228,7 @@ function BlackjackGame:AddPlayer(plr: Player): boolean
 		end),
 		plrIndex,
 		nil,
+		false,
 	})
 	return true
 end
@@ -250,24 +261,23 @@ function BlackjackGame:AttachPlayer(plr: Player)
 
 	--defining all due typechecker errors
 	local character: Model = plr.Character :: Model
-	local primaryPart: BasePart = character.PrimaryPart :: BasePart
+	--local primaryPart: BasePart = character.PrimaryPart :: BasePart
 	local humanoid: Humanoid = character:FindFirstChild("Humanoid") :: Humanoid
 
-	primaryPart.Anchored = true
-	humanoid.AutoRotate = false
-	humanoid.PlatformStand = true
-	--self:PlayIdleAnimation(plr)
+	--Player will be unable to leave it's seat.
+	humanoid.JumpHeight = 0
+	self:PlayIdleAnimation(plr)
 	local index = self:FindPlayerInTable(plr)[6]
 
 	--TODO: doing in this way because of the fucking typechecker. **fix it**
 	if index == 1 then
-		primaryPart.CFrame = bjTable.player1.CFrame
+		bjTable.player1:Sit(humanoid)
 	elseif index == 2 then
-		primaryPart.CFrame = bjTable.player2.CFrame
+		bjTable.player2:Sit(humanoid)
 	elseif index == 3 then
-		primaryPart.CFrame = bjTable.player3.CFrame
+		bjTable.player3:Sit(humanoid)
 	elseif index == 4 then
-		primaryPart.CFrame = bjTable.player3.CFrame
+		bjTable.player4:Sit(humanoid)
 	else
 		warn("BlackjackGame -- Player index out of bounds: " .. index)
 	end
@@ -285,11 +295,19 @@ function BlackjackGame:DeattachPlayer(plr: Player)
 	local primaryPart: BasePart = character.PrimaryPart :: BasePart
 	local humanoid: Humanoid = character:FindFirstChild("Humanoid") :: Humanoid
 
+	local seatPart = humanoid.SeatPart
+
+	if seatPart then
+		local seatWeld = seatPart:FindFirstChild("SeatWeld")
+		if seatWeld then
+			seatWeld:Destroy()
+		end
+	end
+	--Adding a little delay due to bugs
+	--TODO: Find optimizer way to remove player from the seat and TP them.a
+	task.wait(0.2)
 	primaryPart.CFrame = bjTable.Border.border.Front.WorldCFrame * CFrame.new(0, 5.5, 0)
-	primaryPart.Anchored = false
-	humanoid.AutoRotate = true
-	humanoid.PlatformStand = false
-	--self:StopIdleAnimation(plr)
+	self:StopIdleAnimation(plr)
 
 	setVisibility:FireClient(plr, false)
 	setProximity:FireClient(plr, true)
@@ -601,6 +619,15 @@ function BlackjackGame:DealerGame(): boolean
 
 	--Game ended! Let's clean the mess.
 
+	self:CleanAfterGame()
+
+	self.isGame = false
+	print("Game ended!")
+	return true
+end
+
+function BlackjackGame:CleanAfterGame()
+	local bjTable: blackjackTable = self.blackjackTable
 	--Clean the cards at the workspace.
 	for _, v in pairs(bjTable.Table:GetChildren()) do
 		if v:IsA("Attachment") then
@@ -631,10 +658,6 @@ function BlackjackGame:DealerGame(): boolean
 		--Index 2 of v specifies if the player in the chair index i played their hand or not.
 		v[2] = false
 	end
-
-	self.isGame = false
-	print("Game ended!")
-	return true
 end
 
 function BlackjackGame:FindPlayerInTable(plr)
@@ -707,6 +730,7 @@ function BlackjackGame:PlayIdleAnimation(plr: Player)
 	anim.AnimationId = "rbxassetid://91225478466975"
 
 	local track = animator:LoadAnimation(anim)
+	track.Priority = Enum.AnimationPriority.Idle
 	track.Looped = true
 	track:Play()
 	self:FindPlayerInTable(plr)[7] = track

@@ -10,6 +10,7 @@ function NetworkSetupService:Init()
 	local clientStatus = net:RemoteEvent("clientStatus")
 	local dealerCount = net:RemoteEvent("dealerCount")
 	local playerCount = net:RemoteEvent("playerCount")
+	local setBetVisibility = net:RemoteEvent("setBetVisibility")
 end
 
 return NetworkSetupService
