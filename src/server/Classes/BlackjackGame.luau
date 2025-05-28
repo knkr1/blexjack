@@ -16,14 +16,14 @@ local clientStatus = net:RemoteEvent("clientStatus")
 local dealerCount = net:RemoteEvent("dealerCount")
 local playerCount = net:RemoteEvent("playerCount")
 
+--TODO: Add settings inside of the blackjack table and pull it from there.
 local waitingTime = 10
 
 local BlackjackGame = {}
 
 BlackjackGame.__index = BlackjackGame
 
-type Username = string
-
+--Really long typechecking attempt for the table
 type blackjackTable = Part & {
 	Chair: Part & {
 		Front: Attachment,
@@ -42,16 +42,16 @@ type blackjackTable = Part & {
 			},
 		},
 	},
-	player1: Part & {
+	player1: Seat & {
 		Front: Attachment,
 	},
-	player2: Part & {
+	player2: Seat & {
 		Front: Attachment,
 	},
-	player3: Part & {
+	player3: Seat & {
 		Front: Attachment,
 	},
-	player4: Part & {
+	player4: Seat & {
 		Front: Attachment,
 	},
 	Border: Folder & {
@@ -60,6 +60,7 @@ type blackjackTable = Part & {
 		},
 	},
 }
+--Typechecking for player data
 type self = {
 	players: {
 		plr: Player,
@@ -120,9 +121,8 @@ function BlackjackGame:Init()
 			self:AddPlayer(plr)
 
 			--TODO: plrIndex could create bug in some situtations, will get reviewed.
+			--this was long time ago idk if I fixed it or not
 			self:AttachPlayer(plr)
-		else
-			print("nah bro, game stared. ur late lol")
 		end
 	end)
 
@@ -196,11 +196,17 @@ function BlackjackGame:AddPlayer(plr: Player): boolean
 
 	--player object(1), card in hand(2), action(3), bet(4), watch(5), player index (6), animObject (7)
 	table.insert(self.players, {
+		--Player object for easy access
 		plr,
+		--Player cards as string
 		{},
+		--Their action "hit", "pass", etc.
 		GameEnum.blackjackActions.none,
+		--Their bet (not being used atm, planned in further developement)
 		0,
+		--This thing manages the incoming action requests from the client such as "hit" etc.
 		actionWatch.OnServerEvent:Connect(function(reqPLR, request, data)
+			--Is this event comes from our own player?
 			if reqPLR == plr then
 				if GameEnum.blackjackActions[request] then
 					local plrIndex = self:FindPlayerInTable(plr)[6]
@@ -209,7 +215,7 @@ function BlackjackGame:AddPlayer(plr: Player): boolean
 					if self.indexTurn == plrIndex and self.canAction then
 						self:FindPlayerInTable(plr)[3] = request
 						self.canAction = false
-						print("logged: " .. request)
+						--print("logged: " .. request)
 					end
 				elseif request == GameEnum.blackjackRequestActions.bet then
 					--TODO: check requested amount, check user's server amount
@@ -229,10 +235,14 @@ function BlackjackGame:RemovePlayer(plr: Player): boolean
 		plrVal[5]:Disconnect()
 		local playerTableIndex = plrVal[6]
 
+		--Index 2 == True means they have played their hand
+		--If they played their hand, we will remove 1 player from processed players
+		--Since gameplay makes a loop until player count == processedPlayers.
 		if self.indexMap[playerTableIndex][2] == true then
 			self.processedPlayers -= 1
 		end
 
+		--Make the seat available again (FALSE MEANS EMPTY)
 		self.indexMap[plrVal[6]][1] = false
 		table.remove(self.players, plrIndex)
 		return true
@@ -250,28 +260,28 @@ function BlackjackGame:AttachPlayer(plr: Player)
 
 	--defining all due typechecker errors
 	local character: Model = plr.Character :: Model
-	local primaryPart: BasePart = character.PrimaryPart :: BasePart
+	--local primaryPart: BasePart = character.PrimaryPart :: BasePart
 	local humanoid: Humanoid = character:FindFirstChild("Humanoid") :: Humanoid
 
-	primaryPart.Anchored = true
-	humanoid.AutoRotate = false
-	humanoid.PlatformStand = true
-	--self:PlayIdleAnimation(plr)
+	humanoid.JumpHeight = 0
+	self:PlayIdleAnimation(plr)
 	local index = self:FindPlayerInTable(plr)[6]
 
 	--TODO: doing in this way because of the fucking typechecker. **fix it**
+	--Make player sit to the chair based on their index
 	if index == 1 then
-		primaryPart.CFrame = bjTable.player1.CFrame
+		bjTable.player1:Sit(humanoid)
 	elseif index == 2 then
-		primaryPart.CFrame = bjTable.player2.CFrame
+		bjTable.player2:Sit(humanoid)
 	elseif index == 3 then
-		primaryPart.CFrame = bjTable.player3.CFrame
+		bjTable.player3:Sit(humanoid)
 	elseif index == 4 then
-		primaryPart.CFrame = bjTable.player3.CFrame
+		bjTable.player4:Sit(humanoid)
 	else
 		warn("BlackjackGame -- Player index out of bounds: " .. index)
 	end
 
+	--Enable gui & disable proximity
 	setVisibility:FireClient(plr, true)
 	setProximity:FireClient(plr, false)
 end
@@ -285,21 +295,34 @@ function BlackjackGame:DeattachPlayer(plr: Player)
 	local primaryPart: BasePart = character.PrimaryPart :: BasePart
 	local humanoid: Humanoid = character:FindFirstChild("Humanoid") :: Humanoid
 
+	self:StopIdleAnimation(plr)
+	--This long code makes player to unsit, due to typechecking issues I had to check everything
+	local seatPart = humanoid.SeatPart
+	if seatPart then
+		local seatWeld = seatPart:FindFirstChild("SeatWeld")
+		if seatWeld then
+			seatWeld:Destroy()
+		end
+	end
+	--Waiting here due to minor bug
+	--TODO: Make this part more efficent
+	task.wait(0.3)
+	--Teleport player to the outside of the border
 	primaryPart.CFrame = bjTable.Border.border.Front.WorldCFrame * CFrame.new(0, 5.5, 0)
-	primaryPart.Anchored = false
-	humanoid.AutoRotate = true
-	humanoid.PlatformStand = false
-	--self:StopIdleAnimation(plr)
+	humanoid.JumpHeight = 0
 
+	--disable gui & enable proximity prompt
 	setVisibility:FireClient(plr, false)
 	setProximity:FireClient(plr, true)
 end
 
+--Based on a hand, calculate the sum.
 function BlackjackGame:CalculateNumber(tbl): number
 	local total = 0
 	local aces = 0
 
 	for _, card in pairs(tbl) do
+		--If it's a number or a text such as "ace", "king"
 		local numStr = card:match("^(%d+)_")
 
 		local value
@@ -317,6 +340,8 @@ function BlackjackGame:CalculateNumber(tbl): number
 		total += value
 	end
 
+	--dummy way to check the most efficent card combination for ace
+	--TODO: Will make client card count to take text value, so that we can write all possible hands.
 	while total > 21 and aces > 0 do
 		total -= 10 -- ace becomes 1 instead of 11
 		aces -= 1
@@ -326,6 +351,8 @@ function BlackjackGame:CalculateNumber(tbl): number
 	return total
 end
 
+--Whetever if it's possible to split
+--It's not being used atm
 function BlackjackGame:CanSplit(tbl): boolean
 	if #tbl == 2 then
 		if tonumber(tbl[1]:match("^(%d+)_")) == tonumber(tbl[1]:match("^(%d+)_")) then
@@ -335,7 +362,10 @@ function BlackjackGame:CanSplit(tbl): boolean
 	return false
 end
 
+--Based on players hand, check whetver they can play double or not.
+--Not being used atm, here for future use.
 function BlackjackGame:CanDouble(tbl): boolean
+	--For a double, player have to pull a card and never again.
 	if #tbl == 2 then
 		return true
 	end
@@ -588,8 +618,10 @@ function BlackjackGame:DealerGame(): boolean
 		for i, v in pairs(self.players) do
 			local score = self:CalculateNumber(v[2])
 			print(v[1].Name .. ": " .. score)
-			if (score < 22 and dealerTotal < 22) and score > dealerTotal then
+			--Either if none busted and players card higher than dealers, or dealer is busted and not us, then we won.
+			if ((score < 22 and dealerTotal < 22) and score > dealerTotal) or (dealerTotal > 22 and score < 22) then
 				self:SetClientStatus(v[1].Name .. " Won!")
+			--If neither dealer or player busted, and we are equal, then it's a tie.
 			elseif score == dealerTotal and (score < 22 and dealerTotal < 22) then
 				self:SetClientStatus(v[1].Name .. " Tied.")
 			else
@@ -601,6 +633,18 @@ function BlackjackGame:DealerGame(): boolean
 
 	--Game ended! Let's clean the mess.
 
+	--Clean the cards at the workspace.
+
+	self:CleanGame()
+
+	self.isGame = false
+	print("Game ended!")
+	return true
+end
+
+--Cleaning game
+function BlackjackGame:CleanGame()
+	local bjTable: blackjackTable = self.blackjackTable
 	--Clean the cards at the workspace.
 	for _, v in pairs(bjTable.Table:GetChildren()) do
 		if v:IsA("Attachment") then
@@ -627,16 +671,12 @@ function BlackjackGame:DealerGame(): boolean
 
 	--Lastly, clean the made actions.
 	for i, v in pairs(self.indexMap) do
-		print(v)
 		--Index 2 of v specifies if the player in the chair index i played their hand or not.
 		v[2] = false
 	end
-
-	self.isGame = false
-	print("Game ended!")
-	return true
 end
 
+--Search through table and find the specific player from self.players, also returning index as a secondary
 function BlackjackGame:FindPlayerInTable(plr)
 	for i, v in pairs(self.players) do
 		if v[1] == plr then
@@ -652,6 +692,7 @@ type Card = Part & {
 	Bottom: Attachment,
 }
 
+--Hiding cards by removing the front surface and hiding its name.
 function BlackjackGame:HideCard(card: Card): ()
 	--We will delete the texture, and change the name of the card so that it couldn't get exploited.
 	card.FrontTexture:Destroy()
@@ -661,6 +702,7 @@ function BlackjackGame:HideCard(card: Card): ()
 	card.CFrame = card.CFrame * CFrame.Angles(0, 0, math.rad(180))
 end
 
+--Made this due to high boilerplate in DealerGame, it just clones the card as an object and pastes it to desired player's position based on the cards amount for visual.
 function BlackjackGame:CloneCard(cardName: string, attachment: Attachment, isHidden: boolean?)
 	if isHidden == nil then
 		isHidden = false
@@ -685,18 +727,21 @@ function BlackjackGame:CloneCard(cardName: string, attachment: Attachment, isHid
 	end
 end
 
+--Set's the text above of the table.
 function BlackjackGame:SetStatus(text)
 	--Redefining due intellisense issues
 	local bjTable: blackjackTable = self.blackjackTable
 	bjTable.Table.Info.MainFrame.Status.Text = text
 end
 
+--Sets the text in the playerGui for every player in the table.
 function BlackjackGame:SetClientStatus(text)
 	for i, v in pairs(self.players) do
 		clientStatus:FireClient(v[1], text)
 	end
 end
 
+--Plays the sitting animation
 function BlackjackGame:PlayIdleAnimation(plr: Player)
 	local character = plr.Character
 
@@ -707,18 +752,23 @@ function BlackjackGame:PlayIdleAnimation(plr: Player)
 	anim.AnimationId = "rbxassetid://91225478466975"
 
 	local track = animator:LoadAnimation(anim)
+	track.Priority = Enum.AnimationPriority.Idle
 	track.Looped = true
 	track:Play()
+	--We save the track into the player database, because we will need to disable it when player lefts.
 	self:FindPlayerInTable(plr)[7] = track
 end
 
+--Stop the animation & clean the mess
 function BlackjackGame:StopIdleAnimation(plr: Player)
 	local track: AnimationTrack = self:FindPlayerInTable(plr)[7]
 	if track then
 		track:Stop()
+		track:Destroy()
 	end
 end
 
+--Write players card sum for accessibility
 function BlackjackGame:ChangePlayerAmountClient(plr: Player)
 	playerCount:FireClient(plr, self:CalculateNumber(self:FindPlayerInTable(plr)[2]))
 end
