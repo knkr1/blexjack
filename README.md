@@ -8,6 +8,7 @@ OOP based Blackjack game as a random project.
 1. OOP Based
 2. Anti-Cheat
 3. Can handle various scenarios (Such as a player leaving mid game)
+4. Table template is easily modifiable, you can do any type of table with small configurations. 
 
 ## Future Plan
 
