@@ -3,6 +3,8 @@ Made with Rojo, RbxUtils, Wally, Rokit
 
 OOP based Blackjack game as a random project.
 
+[%80 of this project is here](https://github.com/knkr1/blexjack/blob/master/src/server/Classes/BlackjackGame.luau)
+
 ## Features
 
 1. OOP Based
